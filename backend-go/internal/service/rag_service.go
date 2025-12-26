@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"path/filepath"
@@ -27,57 +28,69 @@ func NewRagService(client pb.LLMServiceClient, data *data.Data) *RagService {
 	}
 }
 
-// StreamChat 核心逻辑：调用 gRPC 并把结果推到一个 channel 里给 Handler 用
-// 返回一个只读 channel，Handler 只需要从里面读字符串即可
+// StreamChat RAG 核心流程
 func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan string, error) {
-
-	// 1. 创建一个管道，用于把 gRPC 的数据“搬运”给 HTTP
-	// 使用带缓冲的 channel 防止阻塞
 	respChan := make(chan string, 10)
 
-	// 2. 启动协程后台搬运
 	go func() {
-		defer close(respChan) // 搬运结束关闭管道
+		defer close(respChan)
 
-		// 1. 发送 "思考中" 信号
-		respChan <- "THINKing: 正在理解您的问题..."
-
-		// 2. 调用 Python 进行 Query 向量化
-		// 注意：这里我们复用 EmbedData 接口
-		embResp, err := s.grpcClient.EmbedData(ctx, &pb.EmbedRequest{
-			Data: &pb.EmbedRequest_Text{Text: req.Query},
-		})
+		// 1. 向量化
+		respChan <- "THINKing: 正在理解意图..."
+		embResp, err := s.grpcClient.EmbedData(ctx, &pb.EmbedRequest{Data: &pb.EmbedRequest_Text{Text: req.Query}})
 		if err != nil {
-			respChan <- "ERR: 向量化服务异常 - " + err.Error()
+			respChan <- "ERR: " + err.Error()
 			return
 		}
 
-		respChan <- fmt.Sprintf("THINKing: 意图识别完成，生成查询向量 (%d 维)...", len(embResp.Vector))
-
-		// 3. 去 Qdrant 检索
-		docs, err := s.data.SearchSimilar(ctx, embResp.Vector, 3) // 找最相似的3个
+		// 2. 检索 (Retrieval)
+		respChan <- "THINKing: 正在检索知识库..."
+		docs, err := s.data.SearchSimilar(ctx, embResp.Vector, 3)
 		if err != nil {
-			respChan <- "ERR: 知识库检索失败 - " + err.Error()
+			respChan <- "ERR: " + err.Error()
 			return
 		}
 
-		if len(docs) == 0 {
-			respChan <- "ANSWER: 抱歉，知识库中没有找到相关内容。"
+		// 3. 组装 Prompt (Augmentation)
+		contextText := ""
+		if len(docs) > 0 {
+			respChan <- fmt.Sprintf("THINKing: 找到 %d 份相关文档，正在阅读...", len(docs))
+			for i, doc := range docs {
+				// ⚠️ 注意：这里目前我们只存了文件名。
+				// 在真实的生产环境，Worker 应该把 PDF 的全文内容存入 Qdrant 的 Payload
+				// 这里我们暂时把 "文件名" 当作 "文档内容" 喂给 AI
+				// 以后你需要优化 Worker 里的 PDF 解析逻辑
+				contextText += fmt.Sprintf("文档%d内容: %s\n", i+1, doc)
+			}
+		} else {
+			respChan <- "THINKing: 未找到相关文档，将依靠通用知识回答..."
+		}
+
+		// 构造最终 Prompt
+		finalPrompt := fmt.Sprintf("背景知识：\n%s\n\n用户问题：%s", contextText, req.Query)
+
+		// 4. 生成 (Generation) - 调用 Python 的 AskStream
+		respChan <- "THINKing: 正在生成回答..."
+		stream, err := s.grpcClient.AskStream(ctx, &pb.AskRequest{Query: finalPrompt})
+		if err != nil {
+			respChan <- "ERR: LLM 连接失败 - " + err.Error()
 			return
 		}
 
-		// 4. (临时) 直接把搜到的文件名返回，证明检索成功
-		// 下一步我们再接入 LLM 做润色
-		respChan <- "THINKing: 已在知识库中定位到相关文档，正在整理..."
-
-		respChan <- "ANSWER: 根据您的查询，我在知识库中找到了以下线索：\n\n"
-		for i, docName := range docs {
-			// 模拟打字机效果，把搜索结果打出来
-			line := fmt.Sprintf("%d. 📄 来源文档: %s\n", i+1, docName)
-			respChan <- "ANSWER: " + line
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				respChan <- "ERR: " + err.Error()
+				return
+			}
+			// 将 AI 的回答推给前端
+			if resp.AnswerDelta != "" {
+				respChan <- "ANSWER: " + resp.AnswerDelta
+			}
 		}
-
-		respChan <- "ANSWER: \n(以上是基于向量检索的真实结果，RAG 链路已跑通！)"
 	}()
 
 	return respChan, nil
