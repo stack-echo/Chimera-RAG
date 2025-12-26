@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from api.proto import rag_service_pb2 as api_dot_proto_dot_rag__service__pb2
+import rag_service_pb2 as rag__service__pb2
 
 GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in api/proto/rag_service_pb2_grpc.py depends on'
+        + ' but the generated code in rag_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -37,13 +37,13 @@ class LLMServiceStub(object):
         """
         self.AskStream = channel.unary_stream(
                 '/rag.v1.LLMService/AskStream',
-                request_serializer=api_dot_proto_dot_rag__service__pb2.AskRequest.SerializeToString,
-                response_deserializer=api_dot_proto_dot_rag__service__pb2.AskResponse.FromString,
+                request_serializer=rag__service__pb2.AskRequest.SerializeToString,
+                response_deserializer=rag__service__pb2.AskResponse.FromString,
                 _registered_method=True)
         self.EmbedData = channel.unary_unary(
                 '/rag.v1.LLMService/EmbedData',
-                request_serializer=api_dot_proto_dot_rag__service__pb2.EmbedRequest.SerializeToString,
-                response_deserializer=api_dot_proto_dot_rag__service__pb2.EmbedResponse.FromString,
+                request_serializer=rag__service__pb2.EmbedRequest.SerializeToString,
+                response_deserializer=rag__service__pb2.EmbedResponse.FromString,
                 _registered_method=True)
 
 
@@ -72,13 +72,13 @@ def add_LLMServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'AskStream': grpc.unary_stream_rpc_method_handler(
                     servicer.AskStream,
-                    request_deserializer=api_dot_proto_dot_rag__service__pb2.AskRequest.FromString,
-                    response_serializer=api_dot_proto_dot_rag__service__pb2.AskResponse.SerializeToString,
+                    request_deserializer=rag__service__pb2.AskRequest.FromString,
+                    response_serializer=rag__service__pb2.AskResponse.SerializeToString,
             ),
             'EmbedData': grpc.unary_unary_rpc_method_handler(
                     servicer.EmbedData,
-                    request_deserializer=api_dot_proto_dot_rag__service__pb2.EmbedRequest.FromString,
-                    response_serializer=api_dot_proto_dot_rag__service__pb2.EmbedResponse.SerializeToString,
+                    request_deserializer=rag__service__pb2.EmbedRequest.FromString,
+                    response_serializer=rag__service__pb2.EmbedResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -107,8 +107,8 @@ class LLMService(object):
             request,
             target,
             '/rag.v1.LLMService/AskStream',
-            api_dot_proto_dot_rag__service__pb2.AskRequest.SerializeToString,
-            api_dot_proto_dot_rag__service__pb2.AskResponse.FromString,
+            rag__service__pb2.AskRequest.SerializeToString,
+            rag__service__pb2.AskResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -134,8 +134,8 @@ class LLMService(object):
             request,
             target,
             '/rag.v1.LLMService/EmbedData',
-            api_dot_proto_dot_rag__service__pb2.EmbedRequest.SerializeToString,
-            api_dot_proto_dot_rag__service__pb2.EmbedResponse.FromString,
+            rag__service__pb2.EmbedRequest.SerializeToString,
+            rag__service__pb2.EmbedResponse.FromString,
             options,
             channel_credentials,
             insecure,
