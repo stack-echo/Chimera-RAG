@@ -26,8 +26,7 @@ if _version_not_supported:
 
 
 class LLMServiceStub(object):
-    """定义 RAG 服务接口
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -45,23 +44,30 @@ class LLMServiceStub(object):
                 request_serializer=rag__service__pb2.EmbedRequest.SerializeToString,
                 response_deserializer=rag__service__pb2.EmbedResponse.FromString,
                 _registered_method=True)
+        self.ParseAndEmbed = channel.unary_unary(
+                '/rag.v1.LLMService/ParseAndEmbed',
+                request_serializer=rag__service__pb2.ParseRequest.SerializeToString,
+                response_deserializer=rag__service__pb2.ParseResponse.FromString,
+                _registered_method=True)
 
 
 class LLMServiceServicer(object):
-    """定义 RAG 服务接口
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def AskStream(self, request, context):
-        """1. 核心问答接口 (Server-side Streaming)
-        Go 发送一个请求，Python 流式返回 Token 和 思维链
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def EmbedData(self, request, context):
-        """2. 多模态向量化接口
-        Go 发送图片 URL 或 文本，Python 返回向量
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ParseAndEmbed(self, request, context):
+        """🔥 新增：解析并向量化 PDF
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -80,6 +86,11 @@ def add_LLMServiceServicer_to_server(servicer, server):
                     request_deserializer=rag__service__pb2.EmbedRequest.FromString,
                     response_serializer=rag__service__pb2.EmbedResponse.SerializeToString,
             ),
+            'ParseAndEmbed': grpc.unary_unary_rpc_method_handler(
+                    servicer.ParseAndEmbed,
+                    request_deserializer=rag__service__pb2.ParseRequest.FromString,
+                    response_serializer=rag__service__pb2.ParseResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'rag.v1.LLMService', rpc_method_handlers)
@@ -89,8 +100,7 @@ def add_LLMServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class LLMService(object):
-    """定义 RAG 服务接口
-    """
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def AskStream(request,
@@ -136,6 +146,33 @@ class LLMService(object):
             '/rag.v1.LLMService/EmbedData',
             rag__service__pb2.EmbedRequest.SerializeToString,
             rag__service__pb2.EmbedResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ParseAndEmbed(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rag.v1.LLMService/ParseAndEmbed',
+            rag__service__pb2.ParseRequest.SerializeToString,
+            rag__service__pb2.ParseResponse.FromString,
             options,
             channel_credentials,
             insecure,

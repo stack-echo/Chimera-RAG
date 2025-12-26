@@ -7,6 +7,7 @@ from concurrent import futures
 import grpc
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
+import fitz
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'rpc'))
 
@@ -94,6 +95,56 @@ class ChimeraLLMService(rag_service_pb2_grpc.LLMServiceServicer):
             return rag_service_pb2.EmbedResponse(
                 vector=vector
             )
+
+    def ParseAndEmbed(self, request, context):
+            """
+            核心功能：PDF 解析 -> 文本清洗 -> 智能切片 -> 批量向量化
+            """
+            file_name = request.file_name
+            print(f"📄 [Parse] 开始处理文件: {file_name}, 大小: {len(request.file_content)} bytes")
+
+            # 1. 打开 PDF (从内存字节流)
+            try:
+                doc = fitz.open(stream=request.file_content, filetype="pdf")
+            except Exception as e:
+                print(f"❌ PDF 解析失败: {e}")
+                return rag_service_pb2.ParseResponse()
+
+            # 2. 提取文本 (按页)
+            full_chunks = []
+
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                if not text.strip():
+                    continue
+
+                # --- 简单的切片逻辑 (Chunking) ---
+                # 真实场景可以用 LangChain 的 RecursiveCharacterTextSplitter
+                # 这里我们手写一个简单的：每 300 字符切一段，重叠 50 字符
+                chunk_size = 300
+                overlap = 50
+
+                start = 0
+                while start < len(text):
+                    end = start + chunk_size
+                    segment = text[start:end]
+
+                    # 3. 向量化该片段
+                    # 注意：这里是串行调用，大量数据可以改为批量 encode
+                    vector = embed_model.encode(segment).tolist()
+
+                    chunk_obj = rag_service_pb2.DocChunk(
+                        content=segment,
+                        vector=vector,
+                        page_number=page_num + 1 # 人类阅读习惯从1开始
+                    )
+                    full_chunks.append(chunk_obj)
+
+                    # 滑动窗口
+                    start += (chunk_size - overlap)
+
+            print(f"✅ [Parse] 处理完成，共生成 {len(full_chunks)} 个切片")
+            return rag_service_pb2.ParseResponse(chunks=full_chunks)
 
 # --- 服务器启动逻辑 ---
 def serve():

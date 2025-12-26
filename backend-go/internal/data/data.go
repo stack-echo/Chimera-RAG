@@ -19,6 +19,12 @@ type Data struct {
 	Qdrant *qdrant.Client
 }
 
+type SearchResult struct {
+	Content  string
+	FileName string
+	Page     int32
+}
+
 func NewData() *Data {
 	// 1. 初始化 Redis
 	rdb := redis.NewClient(&redis.Options{
@@ -112,7 +118,7 @@ func createCollection(client *qdrant.Client) {
 }
 
 // SearchSimilar 核心检索功能 (使用最新的 Query API)
-func (d *Data) SearchSimilar(ctx context.Context, vector []float32, topK uint64) ([]string, error) {
+func (d *Data) SearchSimilar(ctx context.Context, vector []float32, topK uint64) ([]SearchResult, error) {
 	// 将 vector 转为 SDK 需要的格式
 	queryVal := make([]float32, len(vector))
 	copy(queryVal, vector)
@@ -132,12 +138,19 @@ func (d *Data) SearchSimilar(ctx context.Context, vector []float32, topK uint64)
 		return nil, err
 	}
 
-	var results []string
+	var results []SearchResult
 	for _, point := range points {
-		if val, ok := point.Payload["filename"]; ok {
-			results = append(results, val.GetStringValue())
+		res := SearchResult{}
+		if val, ok := point.Payload["content"]; ok {
+			res.Content = val.GetStringValue()
 		}
+		if val, ok := point.Payload["filename"]; ok {
+			res.FileName = val.GetStringValue()
+		}
+		if val, ok := point.Payload["page_number"]; ok {
+			res.Page = int32(val.GetIntegerValue())
+		}
+		results = append(results, res)
 	}
-
 	return results, nil
 }

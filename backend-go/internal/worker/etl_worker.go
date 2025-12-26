@@ -2,10 +2,11 @@ package worker
 
 import (
 	"context"
+	"io"
 	"log"
 	"time"
 
-	pb "Chimera-RAG/api/rag/v1"
+	pb "Chimera-RAG/backend-go/api/rag/v1"
 	"Chimera-RAG/backend-go/internal/data"
 
 	"github.com/google/uuid"
@@ -73,45 +74,56 @@ func (w *ETLWorker) processFile(ctx context.Context, fileName string) error {
 	}
 	defer obj.Close()
 
-	// B. 模拟解析文本
-	fakeContent := "这是从文件 " + fileName + " 解析出来的模拟文本内容。"
+	// 读取文件所有字节 (注意内存安全，大文件要分片，但Demo演示先直接读)
+	fileBytes, err := io.ReadAll(obj)
+	if err != nil {
+		return err
+	}
 
-	// C. 调用 gRPC (Python) 进行向量化
-	embResp, err := w.grpcClient.EmbedData(ctx, &pb.EmbedRequest{
-		Data: &pb.EmbedRequest_Text{Text: fakeContent},
+	// B. 调用 Python 进行 解析+切片+向量化
+	log.Printf("📡 发送 PDF 给 Python 进行深度解析: %s", fileName)
+	parseResp, err := w.grpcClient.ParseAndEmbed(ctx, &pb.ParseRequest{
+		FileContent: fileBytes,
+		FileName:    fileName,
 	})
 	if err != nil {
 		return err
 	}
 
-	// D. 存入 Qdrant (适配 V1 SDK 写法)
-	pointID := uuid.New().String()
+	// C. 批量存入 Qdrant
+	points := make([]*qdrant.PointStruct, 0, len(parseResp.Chunks))
 
-	// 构造 Point (数据点)
-	// 新版 SDK 对 Value 类型的封装略有不同
-	payloadMap := map[string]interface{}{
-		"filename": fileName,
+	for i, chunk := range parseResp.Chunks {
+		pointID := uuid.New().String()
+
+		// 构造 Payload (元数据)
+		// 这些数据就是以后检索回来给 DeepSeek 看的“背景知识”
+		payloadMap := map[string]interface{}{
+			"filename":    fileName,
+			"content":     chunk.Content,    // 存正文！
+			"page_number": chunk.PageNumber, // 存页码！
+			"chunk_index": i,
+		}
+
+		points = append(points, &qdrant.PointStruct{
+			Id:      qdrant.NewIDUUID(pointID),
+			Vectors: qdrant.NewVectors(chunk.Vector...),
+			Payload: qdrant.NewValueMap(payloadMap),
+		})
 	}
 
-	// 构造 Upsert 请求
-	upsertPoints := []*qdrant.PointStruct{
-		{
-			Id:      qdrant.NewIDUUID(pointID),            // 辅助函数：UUID 转 ID
-			Vectors: qdrant.NewVectors(embResp.Vector...), // 辅助函数：切片转 Vector
-			Payload: qdrant.NewValueMap(payloadMap),       // 辅助函数：Map 转 Payload
-		},
+	// 批量写入 (Batch Upsert)
+	// 真实场景建议分批，每次 100 个
+	if len(points) > 0 {
+		_, err = w.data.Qdrant.Upsert(ctx, &qdrant.UpsertPoints{
+			CollectionName: "chimera_docs",
+			Points:         points,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
-	_, err = w.data.Qdrant.Upsert(ctx, &qdrant.UpsertPoints{
-		CollectionName: "chimera_docs",
-		Points:         upsertPoints,
-	})
-
-	if err != nil {
-		log.Printf("❌ Qdrant 写入失败: %v", err)
-		return err
-	}
-
-	log.Printf("✅ 已存入 Qdrant: %s (ID: %s)", fileName, pointID)
+	log.Printf("✅ ETL 完成: %s 生成了 %d 个向量切片", fileName, len(points))
 	return nil
 }

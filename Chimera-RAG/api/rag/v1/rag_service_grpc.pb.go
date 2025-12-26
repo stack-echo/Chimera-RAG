@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             v3.20.3
-// source: api/proto/rag_service.proto
+// source: rag_service.proto
 
-package ragv1
+package v1
 
 import (
 	context "context"
@@ -19,22 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LLMService_AskStream_FullMethodName = "/rag.v1.LLMService/AskStream"
-	LLMService_EmbedData_FullMethodName = "/rag.v1.LLMService/EmbedData"
+	LLMService_AskStream_FullMethodName     = "/rag.v1.LLMService/AskStream"
+	LLMService_EmbedData_FullMethodName     = "/rag.v1.LLMService/EmbedData"
+	LLMService_ParseAndEmbed_FullMethodName = "/rag.v1.LLMService/ParseAndEmbed"
 )
 
 // LLMServiceClient is the client API for LLMService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// 定义 RAG 服务接口
 type LLMServiceClient interface {
-	// 1. 核心问答接口 (Server-side Streaming)
-	// Go 发送一个请求，Python 流式返回 Token 和 思维链
 	AskStream(ctx context.Context, in *AskRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AskResponse], error)
-	// 2. 多模态向量化接口
-	// Go 发送图片 URL 或 文本，Python 返回向量
 	EmbedData(ctx context.Context, in *EmbedRequest, opts ...grpc.CallOption) (*EmbedResponse, error)
+	// 🔥 新增：解析并向量化 PDF
+	ParseAndEmbed(ctx context.Context, in *ParseRequest, opts ...grpc.CallOption) (*ParseResponse, error)
 }
 
 type lLMServiceClient struct {
@@ -74,18 +71,24 @@ func (c *lLMServiceClient) EmbedData(ctx context.Context, in *EmbedRequest, opts
 	return out, nil
 }
 
+func (c *lLMServiceClient) ParseAndEmbed(ctx context.Context, in *ParseRequest, opts ...grpc.CallOption) (*ParseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ParseResponse)
+	err := c.cc.Invoke(ctx, LLMService_ParseAndEmbed_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LLMServiceServer is the server API for LLMService service.
 // All implementations must embed UnimplementedLLMServiceServer
 // for forward compatibility.
-//
-// 定义 RAG 服务接口
 type LLMServiceServer interface {
-	// 1. 核心问答接口 (Server-side Streaming)
-	// Go 发送一个请求，Python 流式返回 Token 和 思维链
 	AskStream(*AskRequest, grpc.ServerStreamingServer[AskResponse]) error
-	// 2. 多模态向量化接口
-	// Go 发送图片 URL 或 文本，Python 返回向量
 	EmbedData(context.Context, *EmbedRequest) (*EmbedResponse, error)
+	// 🔥 新增：解析并向量化 PDF
+	ParseAndEmbed(context.Context, *ParseRequest) (*ParseResponse, error)
 	mustEmbedUnimplementedLLMServiceServer()
 }
 
@@ -101,6 +104,9 @@ func (UnimplementedLLMServiceServer) AskStream(*AskRequest, grpc.ServerStreaming
 }
 func (UnimplementedLLMServiceServer) EmbedData(context.Context, *EmbedRequest) (*EmbedResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EmbedData not implemented")
+}
+func (UnimplementedLLMServiceServer) ParseAndEmbed(context.Context, *ParseRequest) (*ParseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ParseAndEmbed not implemented")
 }
 func (UnimplementedLLMServiceServer) mustEmbedUnimplementedLLMServiceServer() {}
 func (UnimplementedLLMServiceServer) testEmbeddedByValue()                    {}
@@ -152,6 +158,24 @@ func _LLMService_EmbedData_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMService_ParseAndEmbed_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ParseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMServiceServer).ParseAndEmbed(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMService_ParseAndEmbed_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMServiceServer).ParseAndEmbed(ctx, req.(*ParseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LLMService_ServiceDesc is the grpc.ServiceDesc for LLMService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -163,6 +187,10 @@ var LLMService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "EmbedData",
 			Handler:    _LLMService_EmbedData_Handler,
 		},
+		{
+			MethodName: "ParseAndEmbed",
+			Handler:    _LLMService_ParseAndEmbed_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -171,5 +199,5 @@ var LLMService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "api/proto/rag_service.proto",
+	Metadata: "rag_service.proto",
 }

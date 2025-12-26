@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	pb "Chimera-RAG/api/rag/v1"
+	pb "Chimera-RAG/backend-go/api/rag/v1"
 
 	"github.com/gin-gonic/gin"
 )

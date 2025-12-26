@@ -24,24 +24,28 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11rag_service.proto\x12\x06rag.v1\"z\n\nAskRequest\x12\r\n\x05query\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\x12\x0f\n\x07user_id\x18\x03 \x01(\t\x12\x12\n\nuse_search\x18\x04 \x01(\x08\x12\x11\n\tuse_graph\x18\x05 \x01(\x08\x12\x11\n\timage_url\x18\x06 \x01(\t\"a\n\x0b\x41skResponse\x12\x14\n\x0c\x61nswer_delta\x18\x01 \x01(\t\x12\x14\n\x0cthinking_log\x18\x02 \x01(\t\x12&\n\x0bsource_docs\x18\x03 \x03(\x0b\x32\x11.rag.v1.Reference\">\n\tReference\x12\x10\n\x08\x64oc_name\x18\x01 \x01(\t\x12\x10\n\x08page_num\x18\x02 \x01(\t\x12\r\n\x05score\x18\x03 \x01(\x02\";\n\x0c\x45mbedRequest\x12\x0e\n\x04text\x18\x01 \x01(\tH\x00\x12\x13\n\timage_url\x18\x02 \x01(\tH\x00\x42\x06\n\x04\x64\x61ta\"\x1f\n\rEmbedResponse\x12\x0e\n\x06vector\x18\x01 \x03(\x02\x32~\n\nLLMService\x12\x36\n\tAskStream\x12\x12.rag.v1.AskRequest\x1a\x13.rag.v1.AskResponse0\x01\x12\x38\n\tEmbedData\x12\x14.rag.v1.EmbedRequest\x1a\x15.rag.v1.EmbedResponseB\x12Z\x10\x61pi/rag/v1;ragv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11rag_service.proto\x12\x06rag.v1\"B\n\nAskRequest\x12\r\n\x05query\x18\x01 \x01(\t\x12\x12\n\nsession_id\x18\x02 \x01(\t\x12\x11\n\tuse_graph\x18\x03 \x01(\x08\"9\n\x0b\x41skResponse\x12\x14\n\x0c\x61nswer_delta\x18\x01 \x01(\t\x12\x14\n\x0cthinking_log\x18\x02 \x01(\t\";\n\x0c\x45mbedRequest\x12\x0e\n\x04text\x18\x01 \x01(\tH\x00\x12\x13\n\timage_url\x18\x02 \x01(\tH\x00\x42\x06\n\x04\x64\x61ta\"\x1f\n\rEmbedResponse\x12\x0e\n\x06vector\x18\x01 \x03(\x02\"7\n\x0cParseRequest\x12\x14\n\x0c\x66ile_content\x18\x01 \x01(\x0c\x12\x11\n\tfile_name\x18\x02 \x01(\t\"1\n\rParseResponse\x12 \n\x06\x63hunks\x18\x01 \x03(\x0b\x32\x10.rag.v1.DocChunk\"@\n\x08\x44ocChunk\x12\x0f\n\x07\x63ontent\x18\x01 \x01(\t\x12\x0e\n\x06vector\x18\x02 \x03(\x02\x12\x13\n\x0bpage_number\x18\x03 \x01(\x05\x32\xbc\x01\n\nLLMService\x12\x36\n\tAskStream\x12\x12.rag.v1.AskRequest\x1a\x13.rag.v1.AskResponse0\x01\x12\x38\n\tEmbedData\x12\x14.rag.v1.EmbedRequest\x1a\x15.rag.v1.EmbedResponse\x12<\n\rParseAndEmbed\x12\x14.rag.v1.ParseRequest\x1a\x15.rag.v1.ParseResponseB\x1bZ\x19\x43himera-RAG/api/rag/v1;v1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'rag_service_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
-  _globals['DESCRIPTOR']._serialized_options = b'Z\020api/rag/v1;ragv1'
+  _globals['DESCRIPTOR']._serialized_options = b'Z\031Chimera-RAG/api/rag/v1;v1'
   _globals['_ASKREQUEST']._serialized_start=29
-  _globals['_ASKREQUEST']._serialized_end=151
-  _globals['_ASKRESPONSE']._serialized_start=153
-  _globals['_ASKRESPONSE']._serialized_end=250
-  _globals['_REFERENCE']._serialized_start=252
-  _globals['_REFERENCE']._serialized_end=314
-  _globals['_EMBEDREQUEST']._serialized_start=316
-  _globals['_EMBEDREQUEST']._serialized_end=375
-  _globals['_EMBEDRESPONSE']._serialized_start=377
-  _globals['_EMBEDRESPONSE']._serialized_end=408
-  _globals['_LLMSERVICE']._serialized_start=410
-  _globals['_LLMSERVICE']._serialized_end=536
+  _globals['_ASKREQUEST']._serialized_end=95
+  _globals['_ASKRESPONSE']._serialized_start=97
+  _globals['_ASKRESPONSE']._serialized_end=154
+  _globals['_EMBEDREQUEST']._serialized_start=156
+  _globals['_EMBEDREQUEST']._serialized_end=215
+  _globals['_EMBEDRESPONSE']._serialized_start=217
+  _globals['_EMBEDRESPONSE']._serialized_end=248
+  _globals['_PARSEREQUEST']._serialized_start=250
+  _globals['_PARSEREQUEST']._serialized_end=305
+  _globals['_PARSERESPONSE']._serialized_start=307
+  _globals['_PARSERESPONSE']._serialized_end=356
+  _globals['_DOCCHUNK']._serialized_start=358
+  _globals['_DOCCHUNK']._serialized_end=422
+  _globals['_LLMSERVICE']._serialized_start=425
+  _globals['_LLMSERVICE']._serialized_end=613
 # @@protoc_insertion_point(module_scope)

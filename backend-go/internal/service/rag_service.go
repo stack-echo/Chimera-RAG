@@ -8,7 +8,7 @@ import (
 	"mime/multipart"
 	"path/filepath"
 
-	pb "Chimera-RAG/api/rag/v1"
+	pb "Chimera-RAG/backend-go/api/rag/v1"
 	"Chimera-RAG/backend-go/internal/data"
 
 	"github.com/minio/minio-go/v7"

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "Chimera-RAG/api/rag/v1"
+	pb "Chimera-RAG/backend-go/api/rag/v1"
 	"Chimera-RAG/backend-go/internal/data"
 	"Chimera-RAG/backend-go/internal/handler"
 	"Chimera-RAG/backend-go/internal/service"
