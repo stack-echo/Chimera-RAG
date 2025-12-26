@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"log"
-	"time" // 引入 time 用于设置超时
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "Chimera-RAG/backend-go/api/rag/v1"
+	"Chimera-RAG/backend-go/internal/conf"
 	"Chimera-RAG/backend-go/internal/data"
 	"Chimera-RAG/backend-go/internal/handler"
 	"Chimera-RAG/backend-go/internal/service"
@@ -19,13 +19,20 @@ import (
 func main() {
 	log.Println("🔍 [1/7] 程序启动，正在尝试连接 Python gRPC...")
 
-	// 增加超时设置，防止 gRPC 连不上一直卡着
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	cfg := conf.LoadConfig()
+	maxMsgSize := 100 * 1024 * 1024
 
-	conn, err := grpc.DialContext(ctx, "localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	conn, err := grpc.NewClient(
+		cfg.AI.GRPCHost, // 或 "localhost:50051"
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// 添加这两个选项
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
+	)
 	if err != nil {
-		log.Fatalf("❌ gRPC 连接失败 (Python 服务没起?): %v", err)
+		log.Fatalf("无法连接 AI Service: %v", err)
 	}
 	defer conn.Close()
 	log.Println("✅ [2/7] gRPC 连接成功")

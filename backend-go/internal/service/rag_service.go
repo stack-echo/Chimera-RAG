@@ -45,7 +45,7 @@ func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan
 
 		// 2. 检索 (Retrieval)
 		respChan <- "THINKing: 正在检索知识库..."
-		docs, err := s.data.SearchSimilar(ctx, embResp.Vector, 3)
+		docs, err := s.data.SearchSimilar(ctx, embResp.Vector, 15)
 		if err != nil {
 			respChan <- "ERR: " + err.Error()
 			return
@@ -54,13 +54,13 @@ func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan
 		// 3. 组装 Prompt (Augmentation)
 		contextText := ""
 		if len(docs) > 0 {
-			respChan <- fmt.Sprintf("THINKing: 找到 %d 份相关文档，正在阅读...", len(docs))
+			// 🔥 修改点 2：修改日志文案，消除歧义
+			respChan <- fmt.Sprintf("THINKing: 检索到 %d 个相关片段，正在阅读...", len(docs))
+
 			for i, doc := range docs {
-				// ⚠️ 注意：这里目前我们只存了文件名。
-				// 在真实的生产环境，Worker 应该把 PDF 的全文内容存入 Qdrant 的 Payload
-				// 这里我们暂时把 "文件名" 当作 "文档内容" 喂给 AI
-				// 以后你需要优化 Worker 里的 PDF 解析逻辑
-				contextText += fmt.Sprintf("文档%d内容: %s\n", i+1, doc)
+				// 这里为了调试，甚至可以把 Page Number 也打进日志里
+				// 拼装上下文
+				contextText += fmt.Sprintf("片段%d (第%d页): %s\n", i+1, doc.Page, doc.Content)
 			}
 		} else {
 			respChan <- "THINKing: 未找到相关文档，将依靠通用知识回答..."

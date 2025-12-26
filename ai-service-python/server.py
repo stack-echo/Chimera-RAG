@@ -148,8 +148,17 @@ class ChimeraLLMService(rag_service_pb2_grpc.LLMServiceServicer):
 
 # --- 服务器启动逻辑 ---
 def serve():
+    # 定义最大消息大小 (这里设为 100MB)
+    MAX_MESSAGE_LENGTH = 100 * 1024 * 1024
+
     # 创建 gRPC 服务器
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.server(
+            futures.ThreadPoolExecutor(max_workers=10),
+            options=[
+                ('grpc.max_send_message_length', MAX_MESSAGE_LENGTH),
+                ('grpc.max_receive_message_length', MAX_MESSAGE_LENGTH),
+            ]
+        )
 
     # 注册我们的服务
     rag_service_pb2_grpc.add_LLMServiceServicer_to_server(ChimeraLLMService(), server)
