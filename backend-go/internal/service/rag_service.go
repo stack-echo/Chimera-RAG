@@ -4,18 +4,27 @@ import (
 	"context"
 	"io"
 	"log"
+	"mime/multipart"
+	"path/filepath"
 
-	pb "Chimera-RAG/api/rag/v1" // 请确认你的 module 名
+	pb "Chimera-RAG/api/rag/v1"
+	"Chimera-RAG/backend-go/internal/data"
+
+	"github.com/minio/minio-go/v7"
 )
 
 // RagService 定义业务逻辑
 type RagService struct {
 	grpcClient pb.LLMServiceClient
+	data       *data.Data
 }
 
 // NewRagService 构造函数
-func NewRagService(client pb.LLMServiceClient) *RagService {
-	return &RagService{grpcClient: client}
+func NewRagService(client pb.LLMServiceClient, data *data.Data) *RagService {
+	return &RagService{
+		grpcClient: client,
+		data:       data,
+	}
 }
 
 // StreamChat 核心逻辑：调用 gRPC 并把结果推到一个 channel 里给 Handler 用
@@ -64,4 +73,39 @@ func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan
 	}()
 
 	return respChan, nil
+}
+
+// UploadDocument 处理文件上传业务
+func (s *RagService) UploadDocument(ctx context.Context, file *multipart.FileHeader) (string, error) {
+	// 1. 打开文件流
+	src, err := file.Open()
+	if err != nil {
+		return "", err
+	}
+	defer src.Close()
+
+	// 2. 生成对象名 (防止重名，这里简单用文件名，生产环境建议用 UUID)
+	objectName := filepath.Base(file.Filename)
+	bucketName := "chimera-docs"
+
+	// 3. 流式上传到 MinIO (核心亮点：内存占用极低)
+	info, err := s.data.Minio.PutObject(ctx, bucketName, objectName, src, file.Size, minio.PutObjectOptions{
+		ContentType: "application/pdf", // 假设传的是 PDF
+	})
+	if err != nil {
+		log.Printf("MinIO 上传失败: %v", err)
+		return "", err
+	}
+
+	log.Printf("文件已存入 MinIO: %s (Size: %d)", objectName, info.Size)
+
+	// 4. 写入 Redis 任务队列 (异步解耦)
+	// 将文件名推送到 "task:parse_pdf" 队列中
+	err = s.data.Redis.LPush(ctx, "task:parse_pdf", objectName).Err()
+	if err != nil {
+		log.Printf("Redis 推送失败: %v", err)
+		return "", err
+	}
+
+	return objectName, nil
 }

@@ -56,3 +56,26 @@ func (h *ChatHandler) HandleChatSSE(c *gin.Context) {
 		return false // 管道关闭，断开连接
 	})
 }
+
+// HandleUpload 处理文件上传
+// POST /api/v1/upload
+func (h *ChatHandler) HandleUpload(c *gin.Context) {
+	// 1. 获取上传的文件 (key 名为 "file")
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传文件"})
+		return
+	}
+
+	// 2. 调用 Service
+	objectName, err := h.svc.UploadDocument(c.Request.Context(), file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "上传成功，已加入处理队列",
+		"file_name": objectName,
+	})
+}

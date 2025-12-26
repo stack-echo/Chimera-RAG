@@ -8,12 +8,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "Chimera-RAG/api/rag/v1"
+	"Chimera-RAG/backend-go/internal/data"
 	"Chimera-RAG/backend-go/internal/handler"
 	"Chimera-RAG/backend-go/internal/service"
 )
 
 func main() {
-	// 1. 初始化 gRPC 客户端连接
+	// 1. 初始化基础设施
 	// 注意：生产环境这里应该用 Config 配置地址
 	conn, err := grpc.Dial("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -21,10 +22,12 @@ func main() {
 	}
 	defer conn.Close()
 
+	dataClient := data.NewData()
+
 	// 2. 依赖注入 (DI)
 	// Client -> Service -> Handler
 	grpcClient := pb.NewLLMServiceClient(conn)
-	ragService := service.NewRagService(grpcClient)
+	ragService := service.NewRagService(grpcClient, dataClient)
 	chatHandler := handler.NewChatHandler(ragService)
 
 	// 3. 初始化 Gin 引擎
@@ -48,6 +51,7 @@ func main() {
 	v1 := r.Group("/api/v1")
 	{
 		v1.POST("/chat/stream", chatHandler.HandleChatSSE)
+		v1.POST("/upload", chatHandler.HandleUpload)
 	}
 
 	// 6. 启动服务
