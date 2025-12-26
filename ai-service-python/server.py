@@ -4,6 +4,7 @@ import time
 import logging
 from concurrent import futures
 import grpc
+from sentence_transformers import SentenceTransformer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'rpc'))
 
@@ -11,56 +12,57 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'rpc'))
 import rag_service_pb2
 import rag_service_pb2_grpc
 
+# --- 初始化 AI 模型 ---
+print("📥 正在加载 Embedding 模型 (all-MiniLM-L6-v2)...")
+# 这个模型很小(80MB)，下载很快，生成 384 维向量
+embed_model = SentenceTransformer('all-MiniLM-L6-v2')
+print("✅ 模型加载完毕！")
+
 # --- 业务逻辑实现 ---
 class ChimeraLLMService(rag_service_pb2_grpc.LLMServiceServicer):
 
     def AskStream(self, request, context):
-        """
-        模拟流式问答接口
-        """
-        query = request.query
-        print(f"[收到请求] Query: {query} | UseGraph: {request.use_graph}")
+            """
+            暂时还保留 Mock 对话，下一步再接入 DeepSeek/OpenAI
+            """
+            query = request.query
+            print(f"[收到提问] {query}")
 
-        # 1. 模拟 "思考过程" (Thinking Log)
-        yield rag_service_pb2.AskResponse(
-            thinking_log=f"正在分析意图... (Mock ID: {request.session_id})"
-        )
-        time.sleep(0.5) # 假装在思考
-
-        if request.use_graph:
-            yield rag_service_pb2.AskResponse(
-                thinking_log="检测到专业术语，正在查询 NebulaGraph 知识图谱..."
-            )
+            yield rag_service_pb2.AskResponse(thinking_log=f"正在计算查询向量 (384维)...")
+            
+            # 这里演示一下：我们真的去算一下提问的向量
+            q_vector = embed_model.encode(query).tolist()
+            yield rag_service_pb2.AskResponse(thinking_log=f"向量计算完毕，维度: {len(q_vector)}")
             time.sleep(0.5)
 
-        # 2. 模拟 "流式吐字" (Answer Delta)
-        # 假装这是 LLM 生成的回复
-        mock_answer = f"这是 Chimera 针对问题 '{query}' 的模拟回答。"
-        for char in mock_answer:
-            yield rag_service_pb2.AskResponse(
-                answer_delta=char
-            )
-            time.sleep(0.1) # 模拟打字机效果
-
-        # 3. 模拟 "引用来源" (Source Docs)
-        # 最后一次返回带上引用
-        final_resp = rag_service_pb2.AskResponse()
-        doc1 = final_resp.source_docs.add()
-        doc1.doc_name = "危化品安全手册_v1.pdf"
-        doc1.page_num = "12"
-        doc1.score = 0.95
-        yield final_resp
+            yield rag_service_pb2.AskResponse(answer_delta="这是 Python 端集成 HuggingFace 模型后的测试回复。")
 
     def EmbedData(self, request, context):
-        """
-        模拟向量化接口
-        """
-        print(f"[向量化请求] Type: {'Image' if request.image_url else 'Text'}")
+            """
+            【真实】向量化接口
+            """
+            start = time.time()
 
-        # 模拟返回一个 4 维向量 (真实场景是 768 或 1024 维)
-        return rag_service_pb2.EmbedResponse(
-            vector=[0.1, 0.2, 0.3, 0.99]
-        )
+            # 1. 提取文本
+            text = ""
+            if request.text:
+                text = request.text
+            elif request.image_url:
+                text = "Image embedding not implemented yet" # 暂时跳过图片
+
+            print(f"[向量化请求] 正在处理文本，长度: {len(text)}")
+
+            # 2. 调用模型推理 (Inference)
+            # tolist() 是为了把 numpy 数组转为 Python list，否则 gRPC 传不过去
+            vector = embed_model.encode(text).tolist()
+
+            duration = (time.time() - start) * 1000
+            print(f"✅ 向量化完成，耗时: {duration:.2f}ms，维度: {len(vector)}")
+
+            # 3. 返回真实向量
+            return rag_service_pb2.EmbedResponse(
+                vector=vector
+            )
 
 # --- 服务器启动逻辑 ---
 def serve():

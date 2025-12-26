@@ -96,7 +96,7 @@ func createCollection(client *qdrant.Client) {
 		err := client.CreateCollection(ctx, &qdrant.CreateCollection{
 			CollectionName: "chimera_docs",
 			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-				Size:     4, // ⚠️ 配合 Mock 数据，未来需改为 768
+				Size:     384, // ⚠️ 配合 Mock 数据，未来需改为 768
 				Distance: qdrant.Distance_Cosine,
 			}),
 		})
