@@ -90,6 +90,7 @@ func main() {
 			protected.POST("/upload", chatHandler.HandleUpload)
 			protected.POST("/chat/stream", chatHandler.HandleChatSSE) // 聊天也建议保护起来
 		}
+		protected.GET("/file/:filename", chatHandler.HandleGetFile)
 	}
 
 	log.Println("🚀 Chimera-RAG 后端已启动，监听端口 :8080")

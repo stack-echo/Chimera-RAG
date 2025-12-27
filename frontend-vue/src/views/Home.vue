@@ -1,242 +1,345 @@
 <template>
-  <div class="chat-container">
+  <div class="app-container">
     <div class="header">
-      <h2>🦄 Chimera-RAG Knowledge Base</h2>
-      <a-button type="text" status="danger" @click="handleLogout">
-        退出登录 ({{ userStore.userInfo.username }})
-      </a-button>
+      <div class="brand">🦄 Chimera-RAG</div>
+      <div class="user-info">
+        <span>{{ userStore.userInfo.username }}</span>
+        <a-button type="text" status="danger" size="mini" @click="handleLogout">退出</a-button>
+      </div>
     </div>
 
-    <div class="messages" ref="msgListRef">
-      <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
-        <div class="avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
-        <div class="content">
-          <div v-if="msg.thinking" class="thinking-box">
-            <div class="think-title">Thinking Process...</div>
-            <div class="think-content">{{ msg.thinking }}</div>
+    <div class="main-content">
+      <div class="chat-panel" :class="{ 'full-width': !currentPdfUrl }">
+        <div class="messages" ref="msgListRef">
+          <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
+            <div class="avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</div>
+            <div class="content">
+              <div v-if="msg.thinking" class="thinking-box">
+                <div class="think-title">Thinking...</div>
+                <div class="think-content">{{ msg.thinking }}</div>
+              </div>
+
+              <div v-html="renderMarkdown(msg.content)"></div>
+
+              <div v-if="msg.citations && msg.citations.length" class="citation-box">
+                <div class="citation-title">参考来源:</div>
+                <div
+                    v-for="(cite, idx) in msg.citations"
+                    :key="idx"
+                    class="citation-item"
+                    @click="openPdfPage(cite.file_name, cite.page_number)"
+                >
+                  📄 {{ cite.file_name }} (P{{ cite.page_number }})
+                </div>
+              </div>
+            </div>
           </div>
-          <div v-html="renderMarkdown(msg.content)"></div>
+          <div v-if="loading" class="loading">AI 正在思考...</div>
+        </div>
+
+        <div class="input-area">
+          <a-upload action="/" :custom-request="customRequest" :show-file-list="false">
+            <template #upload-button>
+              <a-button type="secondary" shape="circle"><icon-upload /></a-button>
+            </template>
+          </a-upload>
+          <a-input v-model="inputVal" @press-enter="sendMsg" placeholder="输入问题..." style="margin: 0 10px; flex: 1" />
+          <a-button type="primary" @click="sendMsg" :disabled="loading">发送</a-button>
         </div>
       </div>
-      <div v-if="loading" class="loading">AI 正在思考...</div>
-    </div>
 
-    <div class="input-area">
-      <a-upload
-        action="/"
-        :custom-request="customRequest"
-        :show-file-list="false"
-      >
-        <template #upload-button>
-          <a-button type="outline" shape="circle"><icon-upload /></a-button>
-        </template>
-      </a-upload>
-
-      <a-input
-        v-model="inputVal"
-        @press-enter="sendMsg"
-        placeholder="输入问题，按回车发送..."
-        style="margin: 0 10px; flex: 1"
-      />
-      <a-button type="primary" @click="sendMsg" :disabled="loading">发送</a-button>
+      <div class="pdf-panel" v-if="currentPdfUrl">
+        <div class="pdf-header">
+          <span class="pdf-title">📄 {{ currentPdfName }}</span>
+          <a-button size="mini" @click="closePdf">关闭</a-button>
+        </div>
+        <div class="pdf-viewer" ref="pdfContainer">
+          <VuePdfEmbed
+              :source="currentPdfUrl"
+              :page="targetPage"
+              class="pdf-embed"
+              width="800"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
-import { fetchEventSource } from '@microsoft/fetch-event-source'
+// 1. 所有的 Import 必须放在顶部
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import VuePdfEmbed from 'vue-pdf-embed'
 import MarkdownIt from 'markdown-it'
 import { IconUpload } from '@arco-design/web-vue/es/icon'
-import request from '../api/request' // 使用封装的 axios
+import request from '../api/request'
 import { useUserStore } from '../store/user'
 import { useRouter } from 'vue-router'
-import { Message } from '@arco-design/web-vue'
+import { fetchEventSource } from '@microsoft/fetch-event-source'
 
 const userStore = useUserStore()
 const router = useRouter()
 const md = new MarkdownIt()
 
+// 状态
 const messages = ref([])
 const inputVal = ref('')
 const loading = ref(false)
 const msgListRef = ref(null)
 
-// 渲染 Markdown
-const renderMarkdown = (text) => {
-  return md.render(text || '')
+// PDF 预览状态
+const currentPdfUrl = ref('')
+const currentPdfName = ref('')
+const targetPage = ref(1) // 控制显示的页码，如果不传则显示全部
+
+// ---------------------------------------------------------
+// 🛠️ 事件监听处理 (修复 onUnmounted 报错)
+// ---------------------------------------------------------
+
+// 定义一个具名函数，方便 add 和 remove
+const handleOpenPdfEvent = (e) => {
+  if (e.detail) {
+    console.log('接收到跳转事件:', e.detail)
+    openPdfPage(e.detail.filename, parseInt(e.detail.page))
+  }
 }
 
-// 退出登录
+// 挂载全局方法给 HTML 字符串里的 onclick 调用
+window.openPdf = (filename, page) => {
+  const event = new CustomEvent('open-pdf', { detail: { filename, page } });
+  window.dispatchEvent(event);
+}
+
+onMounted(() => {
+  window.addEventListener('open-pdf', handleOpenPdfEvent)
+})
+
+onUnmounted(() => {
+  // 🔥 修复点：必须传入同一个函数引用，且不能写 ...
+  window.removeEventListener('open-pdf', handleOpenPdfEvent)
+  // 清理 Blob URL 避免内存泄漏
+  if (currentPdfUrl.value) URL.revokeObjectURL(currentPdfUrl.value)
+})
+
+// ---------------------------------------------------------
+// 业务逻辑
+// ---------------------------------------------------------
+
 const handleLogout = () => {
   userStore.logout()
   router.push('/login')
-  Message.success('已退出')
 }
 
-// 📤 上传文件 (改造版)
+// 渲染 MD
+const renderMarkdown = (text) => {
+  if (!text) return ''
+  let html = md.render(text)
+
+  // 替换引用格式 <<filename|page>>
+  const citationRegex = /(&lt;&lt;|<<)\s*(.*?)\s*\|\s*(\d+)\s*(&gt;&gt;|>>)/g;
+  html = html.replace(citationRegex, (match, p1, filename, page) => {
+    return `<span class="citation-highlight" onclick="window.openPdf('${filename}', ${page})">📄 [P${page}]</span>`
+  })
+  return html
+}
+
+// 上传
 const customRequest = async (option) => {
-  const { onProgress, onError, onSuccess, fileItem, name } = option
+  const { onError, onSuccess, fileItem } = option
   const formData = new FormData()
-  formData.append(name || 'file', fileItem.file)
+  formData.append('file', fileItem.file)
 
   try {
-    // request 拦截器会自动带上 Token
-    const res = await request.post('/upload', formData, {
-      onUploadProgress: (event) => {
-        let percent
-        if (event.total > 0) {
-          percent = (event.loaded / event.total) * 100
-        }
-        onProgress(percent, event)
-      }
-    })
-    Message.success('上传成功')
+    const res = await request.post('/upload', formData)
     onSuccess(res)
-
-    // 把上传结果作为一条系统消息展示
-    messages.value.push({
-      role: 'assistant',
-      content: `📄 文件 **${fileItem.file.name}** 上传成功！(DocID: ${res.doc_id})`
-    })
+    // 假设后端返回 res.path 是文件名
+    openPdfPage(res.path, 1)
+    messages.value.push({ role: 'assistant', content: `✅ 文件 **${fileItem.file.name}** 上传成功！正在后台解析...` })
   } catch (error) {
     onError(error)
   }
 }
 
-// 💬 发送消息 (改造版 SSE)
+// 打开 PDF (获取 Blob)
+const openPdfPage = (filename, page) => {
+  // 如果已经在看这个文件，只跳页码
+  if (currentPdfName.value === filename && currentPdfUrl.value) {
+    targetPage.value = page
+    return
+  }
+  fetchPdfBlob(filename, page)
+}
+
+const fetchPdfBlob = async (filename, page) => {
+  try {
+    const res = await request.get(`/file/${filename}`, { responseType: 'blob' })
+    const blob = new Blob([res], { type: 'application/pdf' })
+
+    // 释放旧的 URL
+    if (currentPdfUrl.value) URL.revokeObjectURL(currentPdfUrl.value)
+
+    currentPdfUrl.value = URL.createObjectURL(blob)
+    currentPdfName.value = filename
+    targetPage.value = page
+  } catch (e) {
+    console.error("加载PDF失败", e)
+  }
+}
+
+const closePdf = () => {
+  if (currentPdfUrl.value) URL.revokeObjectURL(currentPdfUrl.value)
+  currentPdfUrl.value = ''
+  currentPdfName.value = ''
+}
+
+// 发送消息
 const sendMsg = async () => {
   if (!inputVal.value.trim()) return
-
-  // 添加用户消息
   messages.value.push({ role: 'user', content: inputVal.value })
   const userQ = inputVal.value
   inputVal.value = ''
   loading.value = true
 
-  // 添加 AI 占位消息
   const aiMsgIndex = messages.value.length
-  messages.value.push({ role: 'assistant', content: '', thinking: '' })
+  messages.value.push({ role: 'assistant', content: '', thinking: '', citations: [] })
 
   try {
     await fetchEventSource('http://localhost:8080/api/v1/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // 🔥 必须手动添加 Authorization 头，因为 fetchEventSource 不走 axios 拦截器
         'Authorization': `Bearer ${userStore.token}`
       },
       body: JSON.stringify({ query: userQ }),
-
       onmessage(msg) {
-        // 1. 处理思考过程
-          if (msg.data.startsWith('THINKing: ')) {
-             messages.value[aiMsgIndex].thinking += msg.data.replace('THINKing: ', '') + '\n'
-          }
-          // 2. 处理错误
-          else if (msg.data.startsWith('ERR: ')) {
-             messages.value[aiMsgIndex].content += '\n**Error:** ' + msg.data
-          }
-          // 3. 🔥 修复点：处理正文
-          // 如果后端发来的数据带有 "ANSWER: " 前缀，需要 strip 掉
-          else {
-             let cleanText = msg.data;
-             if (cleanText.startsWith('ANSWER: ')) {
-                 cleanText = cleanText.replace('ANSWER: ', '');
-             }
-             messages.value[aiMsgIndex].content += cleanText;
-          }
-        // 滚动到底部
+        const data = msg.data
+        if (data.startsWith('THINKing: ')) {
+          messages.value[aiMsgIndex].thinking += data.replace('THINKing: ', '') + '\n'
+        } else if (data.startsWith('ANSWER: ')) {
+          // 兼容 v0.2.0/v0.3.0 的后端逻辑，如果后端发的是 ANSWER: 前缀
+          messages.value[aiMsgIndex].content += data.replace('ANSWER: ', '')
+        } else if (!data.startsWith('SOURCE: ')) {
+          // 默认处理 (假设全是正文)
+          messages.value[aiMsgIndex].content += data
+        }
+
         nextTick(() => {
-          if (msgListRef.value) {
-             msgListRef.value.scrollTop = msgListRef.value.scrollHeight
-          }
+          if(msgListRef.value) msgListRef.value.scrollTop = msgListRef.value.scrollHeight
         })
       },
-      onclose() {
-        loading.value = false
-      },
-      onerror(err) {
-        console.error(err)
-        loading.value = false
-        throw err // rethrow to stop
-      }
+      onclose() { loading.value = false },
+      onerror(err) { throw err }
     })
   } catch (err) {
     loading.value = false
-    messages.value[aiMsgIndex].content += '\n*(连接中断)*'
+    messages.value[aiMsgIndex].content += '\n*(网络连接异常)*'
   }
 }
 </script>
 
 <style scoped>
-/* 这里要把原来 App.vue 里的 style 复制过来 */
-.chat-container {
-  max-width: 800px;
-  margin: 0 auto;
+.app-container {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: #f5f7fa;
+  background: #f5f7fa;
 }
 .header {
-  padding: 20px;
+  height: 50px;
   background: white;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #ddd;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 0 20px;
 }
-.messages {
+.brand { font-weight: bold; font-size: 18px; }
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 左侧聊天 */
+.chat-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #ddd;
+  max-width: 50%; /* 默认宽度 */
+  transition: max-width 0.3s ease; /* 加个动画 */
+}
+/* 🔥 关键优化：如果没有 PDF，聊天框占满 */
+.chat-panel.full-width {
+  max-width: 100%;
+  border-right: none;
+}
+
+.messages { flex: 1; overflow-y: auto; padding: 20px; }
+.input-area { padding: 20px; background: white; display: flex; align-items: center; }
+
+/* 右侧 PDF */
+.pdf-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #525659;
+  min-width: 0;
+  height: 100%;
+}
+
+.pdf-header {
+  height: 40px;
+  background: #333;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 15px;
+}
+.pdf-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80%;
+}
+
+.pdf-viewer {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
-}
-.message {
   display: flex;
-  margin-bottom: 20px;
-}
-.message.user {
-  flex-direction: row-reverse;
-}
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #e0e0e0;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  margin: 0 10px;
 }
-.content {
-  background: white;
-  padding: 10px 15px;
-  border-radius: 8px;
-  max-width: 70%;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+.pdf-embed {
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  /* 确保 PDF 不会撑破容器，并在容器内自适应 */
+  width: 90%;
+  height: auto;
+  display: block;
 }
-.message.user .content {
-  background: #165dff;
-  color: white;
-}
-.input-area {
-  padding: 20px;
-  background: white;
-  border-top: 1px solid #eee;
-  display: flex;
-  align-items: center;
-}
-.thinking-box {
-  background: #f0f9ff;
-  border-left: 3px solid #165dff;
-  padding: 8px;
-  margin-bottom: 8px;
-  font-size: 0.9em;
-  color: #666;
-}
-.think-title {
+
+/* 样式穿透 */
+:deep(.citation-highlight) {
+  color: #165dff;
   font-weight: bold;
-  margin-bottom: 4px;
+  cursor: pointer;
+  background: rgba(22, 93, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin: 0 2px;
 }
+:deep(.citation-highlight:hover) {
+  background: rgba(22, 93, 255, 0.2);
+  text-decoration: underline;
+}
+.think-content {
+  white-space: pre-wrap;
+  font-family: monospace;
+}
+/* 复用消息样式 */
+.message { display: flex; margin-bottom: 20px; }
+.message.user { flex-direction: row-reverse; }
+.content { background: white; padding: 10px; border-radius: 8px; max-width: 80%; }
+.thinking-box { background: #f0f9ff; padding: 8px; font-size: 0.85em; color: #666; border-left: 3px solid #165dff; margin-bottom: 5px; }
 </style>

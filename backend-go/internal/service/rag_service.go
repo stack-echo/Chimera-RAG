@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/minio/minio-go/v7"
 	"io"
 	"mime/multipart"
 	"path/filepath"
@@ -52,20 +53,27 @@ func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan
 		// 3. 组装 Prompt (Augmentation)
 		contextText := ""
 		if len(docs) > 0 {
-			// 🔥 修改点 2：修改日志文案，消除歧义
 			respChan <- fmt.Sprintf("THINKing: 检索到 %d 个相关片段，正在阅读...", len(docs))
 
-			for i, doc := range docs {
-				// 这里为了调试，甚至可以把 Page Number 也打进日志里
-				// 拼装上下文
-				contextText += fmt.Sprintf("片段%d (第%d页): %s\n", i+1, doc.Page, doc.Content)
+			for _, doc := range docs {
+				// 🔥 核心修改点：格式化上下文，显式包含【文件名】和【页码】
+				// 这样 Python 端的 System Prompt 才能识别并引用
+				// 假设 doc 结构体里有 FileName 字段 (如果没有，请去 Qdrant 检索逻辑里补上)
+				contextText += fmt.Sprintf("【来源: %s | 页码: %d】\n%s\n\n", doc.FileName, doc.Page, doc.Content)
 			}
 		} else {
 			respChan <- "THINKing: 未找到相关文档，将依靠通用知识回答..."
 		}
 
 		// 构造最终 Prompt
-		finalPrompt := fmt.Sprintf("背景知识：\n%s\n\n用户问题：%s", contextText, req.Query)
+		// 建议加上 explicit instruction (显式指令) 强化 AI 的引用意图
+		finalPrompt := fmt.Sprintf(`
+			背景知识：
+			%s
+			
+			用户问题：%s
+			请根据背景知识回答，并在引用处使用 <<文件名|页码>> 格式标注。
+			`, contextText, req.Query)
 
 		// 4. 生成 (Generation) - 调用 Python 的 AskStream
 		respChan <- "THINKing: 正在生成回答..."
@@ -138,4 +146,13 @@ func (s *RagService) UploadDocument(ctx context.Context, fileHeader *multipart.F
 	}
 
 	return doc, nil
+}
+
+// GetFile 获取文件流用于预览
+func (s *RagService) GetFile(ctx context.Context, fileName string) (*minio.Object, int64, error) {
+	// 这里硬编码 bucket 名，或者从 s.conf 读取
+	bucketName := "chimera-docs"
+
+	// 调用 Data 层
+	return s.Data.GetFileStream(ctx, bucketName, fileName)
 }

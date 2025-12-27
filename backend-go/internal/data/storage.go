@@ -38,6 +38,28 @@ func (d *Data) UploadFile(ctx context.Context, file io.Reader, fileSize int64, o
 	return objectName, nil
 }
 
+// GetFileStream 从 MinIO 获取文件流
+// 返回: 文件对象(需由调用者Close), 文件大小, 错误
+func (d *Data) GetFileStream(ctx context.Context, bucketName string, objectName string) (*minio.Object, int64, error) {
+	// 1. 获取对象流
+	object, err := d.Minio.GetObject(ctx, bucketName, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("minio get object error: %w", err)
+	}
+
+	// 2. 获取对象信息 (主要为了拿 Size)
+	// Stat() 会检查对象是否存在，如果不存在这里会报错
+	info, err := object.Stat()
+	if err != nil {
+		// 如果 Stat 失败，说明对象可能不存在或连接断开
+		// 记得关闭 object，防止泄漏
+		object.Close()
+		return nil, 0, fmt.Errorf("minio stat object error: %w", err)
+	}
+
+	return object, info.Size, nil
+}
+
 // ---------------------------------------------------------
 // Postgres 相关操作 (DB) - v0.2.0 新增
 // ---------------------------------------------------------
