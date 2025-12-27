@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Chimera-RAG/backend-go/internal/middleware"
 	"context"
 	"log"
 
@@ -80,10 +81,15 @@ func main() {
 			auth.POST("/login", authHandler.HandleLogin)
 		}
 
-		// 业务功能模块
-		// 未来可以在这里加中间件: api.Use(middleware.JWTAuth())
-		api.POST("/upload", chatHandler.HandleUpload)
-		api.POST("/chat/stream", chatHandler.HandleChatSSE)
+		// 受保护的路由 (Protected Routes)
+		// 使用 Use 加载中间件
+		protected := api.Group("/")
+		protected.Use(middleware.JWTAuth())
+		{
+			// 只有登录用户才能访问下面这些
+			protected.POST("/upload", chatHandler.HandleUpload)
+			protected.POST("/chat/stream", chatHandler.HandleChatSSE) // 聊天也建议保护起来
+		}
 	}
 
 	log.Println("🚀 Chimera-RAG 后端已启动，监听端口 :8080")

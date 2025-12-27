@@ -57,25 +57,29 @@ func (h *ChatHandler) HandleChatSSE(c *gin.Context) {
 	})
 }
 
-// HandleUpload 处理文件上传
-// POST /api/v1/upload
+// HandleUpload 修改版
 func (h *ChatHandler) HandleUpload(c *gin.Context) {
-	// 1. 获取上传的文件 (key 名为 "file")
-	file, err := c.FormFile("file")
+	// 1. 获取用户 ID
+	userID := c.GetUint("userID") // 假设中间件设置了 uint 类型的 userID
+
+	// 2. 获取文件
+	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传文件"})
+		c.JSON(400, gin.H{"error": "文件无效"})
 		return
 	}
 
-	// 2. 调用 Service
-	objectName, err := h.svc.UploadDocument(c.Request.Context(), file)
+	// 3. 调用 Service
+	doc, err := h.svc.UploadDocument(c.Request.Context(), fileHeader, userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "上传失败: " + err.Error()})
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":   "上传成功，已加入处理队列",
-		"file_name": objectName,
+	// 4. 返回结果
+	c.JSON(200, gin.H{
+		"msg":    "上传成功",
+		"doc_id": doc.ID,
+		"path":   doc.StoragePath,
 	})
 }

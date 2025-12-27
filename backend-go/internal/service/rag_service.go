@@ -4,27 +4,25 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"path/filepath"
+	"strings"
 
 	pb "Chimera-RAG/backend-go/api/rag/v1"
 	"Chimera-RAG/backend-go/internal/data"
-
-	"github.com/minio/minio-go/v7"
 )
 
 // RagService 定义业务逻辑
 type RagService struct {
 	grpcClient pb.LLMServiceClient
-	data       *data.Data
+	Data       *data.Data
 }
 
 // NewRagService 构造函数
 func NewRagService(client pb.LLMServiceClient, data *data.Data) *RagService {
 	return &RagService{
 		grpcClient: client,
-		data:       data,
+		Data:       data,
 	}
 }
 
@@ -45,7 +43,7 @@ func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan
 
 		// 2. 检索 (Retrieval)
 		respChan <- "THINKing: 正在检索知识库..."
-		docs, err := s.data.SearchSimilar(ctx, embResp.Vector, 15)
+		docs, err := s.Data.SearchSimilar(ctx, embResp.Vector, 15)
 		if err != nil {
 			respChan <- "ERR: " + err.Error()
 			return
@@ -96,37 +94,48 @@ func (s *RagService) StreamChat(ctx context.Context, req *pb.AskRequest) (<-chan
 	return respChan, nil
 }
 
-// UploadDocument 处理文件上传业务
-func (s *RagService) UploadDocument(ctx context.Context, file *multipart.FileHeader) (string, error) {
+// UploadDocument 处理文件上传全流程
+func (s *RagService) UploadDocument(ctx context.Context, fileHeader *multipart.FileHeader, userID uint) (*data.Document, error) {
 	// 1. 打开文件流
-	src, err := file.Open()
+	src, err := fileHeader.Open()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer src.Close()
 
-	// 2. 生成对象名 (防止重名，这里简单用文件名，生产环境建议用 UUID)
-	objectName := filepath.Base(file.Filename)
-	bucketName := "chimera-docs"
-
-	// 3. 流式上传到 MinIO (核心亮点：内存占用极低)
-	info, err := s.data.Minio.PutObject(ctx, bucketName, objectName, src, file.Size, minio.PutObjectOptions{
-		ContentType: "application/pdf", // 假设传的是 PDF
-	})
+	// 2. [Data层] 上传到 MinIO
+	// Service 层不需要知道 MinIO SDK 的细节，只需要给文件流
+	storagePath, err := s.Data.UploadFile(ctx, src, fileHeader.Size, fileHeader.Filename)
 	if err != nil {
-		log.Printf("MinIO 上传失败: %v", err)
-		return "", err
+		return nil, err
 	}
 
-	log.Printf("文件已存入 MinIO: %s (Size: %d)", objectName, info.Size)
-
-	// 4. 写入 Redis 任务队列 (异步解耦)
-	// 将文件名推送到 "task:parse_pdf" 队列中
-	err = s.data.Redis.LPush(ctx, "task:parse_pdf", objectName).Err()
-	if err != nil {
-		log.Printf("Redis 推送失败: %v", err)
-		return "", err
+	// 3. [Data层] 写入数据库 (v0.2.0 文件确权)
+	doc := &data.Document{
+		Title:           fileHeader.Filename,
+		FileName:        fileHeader.Filename,
+		FileSize:        fileHeader.Size,
+		FileType:        strings.ToLower(filepath.Ext(fileHeader.Filename)), // 简单的后缀判断工具函数
+		StoragePath:     storagePath,
+		KnowledgeBaseID: 0, // 默认归属根目录，后续可传参
+		OwnerID:         userID,
+		Status:          "pending",
 	}
 
-	return objectName, nil
+	if err := s.Data.CreateDocument(ctx, doc); err != nil {
+		// ⚠️ 进阶思考: 如果数据库写入失败，最好把 MinIO 里的垃圾文件删掉 (补偿机制)
+		// s.Data.DeleteFile(ctx, storagePath)
+		return nil, err
+	}
+
+	// 4. [Data层] 写入 Redis 任务队列
+	// 传递 Document ID 而不是路径，Worker 可以根据 ID 查库获取更多信息
+	// 也可以传 JSON: {"doc_id": 1, "path": "xxx.pdf"}
+	err = s.Data.PushTask(ctx, "task:parse_pdf", storagePath)
+	if err != nil {
+		// 同样，如果队列失败，考虑是否回滚数据库状态为 "failed"
+		return nil, err
+	}
+
+	return doc, nil
 }

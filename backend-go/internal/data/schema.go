@@ -55,6 +55,7 @@ type Document struct {
 	FileName string `json:"file_name"`
 	FileSize int64  `json:"file_size"`
 	FileType string `json:"file_type"` // .pdf, .docx
+	OwnerID  uint   `gorm:"index"`
 
 	// 存储路径: minio://bucket/org_id/kb_id/uuid.pdf
 	StoragePath string `gorm:"not null" json:"storage_path"`
